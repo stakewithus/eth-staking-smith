@@ -44,7 +44,7 @@ pub(crate) fn keystore_to_deposit(
     let network_str = network.as_str();
     let spec;
 
-    if ["goerli", "prater", "mainnet"].contains(&network_str) {
+    if ["goerli", "prater", "mainnet", "holesky"].contains(&network_str) {
         spec = Eth2NetworkConfig::constant(network_str)
             .unwrap()
             .unwrap()
@@ -273,6 +273,50 @@ mod test {
         // Please choose the (mainnet or testnet) network/chain name ['mainnet', 'prater', 'kintsugi', 'kiln', 'minimal']:  [mainnet]: prater
         assert_eq!(
             "aa954f22199db5ceb3f3b4b76740408af43cabf5724af5db530f7452f204b44026809e145003827b3c9cbd979bb035a3160b2f231aec3ccabc4fe039030a8baf36b4ad5d458ba672714f327e4705f14c501c3184b9c1fd171470c5170002fa8c",
+            deposit_data.signature.to_string().as_str().strip_prefix("0x").unwrap()
+        );
+    }
+
+    #[test]
+    fn test_deposit_holesky() {
+        // new version of cli which supports holesky require an 8-length password so we have to use different keystore
+        const HOLESKY_KEYSTORE: &str = r#"{"crypto": {"kdf": {"function": "scrypt", "params": {"dklen": 32, "n": 262144, "r": 8, "p": 1, "salt": "20332a9a984ab8e215bc42dba6a781c522c4a34a17de4010b48245db01356d09"}, "message": ""}, "checksum": {"function": "sha256", "params": {}, "message": "f4ec2c5d6aaa3e57258267f11d593e9725e8f4ab3feabaaed76c7ec309cdcc3e"}, "cipher": {"function": "aes-128-ctr", "params": {"iv": "5b4e7285e9c7c3d2f6782efb564f7d3b"}, "message": "9def19e0595d6c19bc104e564fc665d1ff3a4defee0c563f046266f9a5ee9c14"}}, "description": "", "pubkey": "8666389c3fe6ff0bca9adba81504f380b9e2c719419760d561836472fafe295cb50696524e19cba084e1d788d66c80d6", "path": "m/12381/3600/0/0/0", "uuid": "8cadd388-cde9-4a44-aeb4-8b5d305b8c6e", "version": 4}"#;
+        const HOLESKY_PASSWORD: &[u8] = "testtest".as_bytes();
+        let keystore = Keystore::from_json_str(HOLESKY_KEYSTORE).unwrap();
+        let keypair = keystore.decrypt_keypair(HOLESKY_PASSWORD).unwrap();
+        let key_material = VotingKeyMaterial {
+            keystore: Some(keystore.clone()),
+            keypair,
+            voting_secret: PlainText::from(
+                keystore
+                    .decrypt_keypair(HOLESKY_PASSWORD)
+                    .unwrap()
+                    .sk
+                    .serialize()
+                    .as_bytes()
+                    .to_vec(),
+            ),
+            withdrawal_keypair: None,
+        };
+        let withdrawal_creds = hex::decode(WITHDRAWAL_CREDENTIALS_ETH2).unwrap();
+        let (deposit_data, _) = keystore_to_deposit(
+            &key_material,
+            &withdrawal_creds.as_slice(),
+            32_000_000_000,
+            "holesky".to_string(),
+            None,
+        )
+        .unwrap();
+
+        // Signature asserted here is generated with
+        // python ./staking_deposit/deposit.py existing-mnemonic --keystore_password testtest
+
+        // Please enter your mnemonic separated by spaces (" "): entire habit bottom mention spoil clown finger wheat motion fox axis mechanic country make garment bar blind stadium sugar water scissors canyon often ketchup
+        // Enter the index (key number) you wish to start generating more keys from. For example, if you've generated 4 keys in the past, you'd enter 4 here. [0]: 0
+        // Please choose how many new validators you wish to run: 1
+        // Please choose the (mainnet or testnet) network/chain name ['mainnet', 'goerli', 'sepolia', 'zhejiang', 'holesky']:  [mainnet]: holesky
+        assert_eq!(
+            "9631e3c0eb64e2ee89341fef9a7323a9f657ee4a62d22a685c72c813cca561ede5446ff1ee58cb073fdd9bc5932d3bbe00bbfe28cd15c85fd044856e3360ebcc5b1b3b884c63ed25d3ebf444f76c103213bb1bc258e94c7325379ad4da412a8e",
             deposit_data.signature.to_string().as_str().strip_prefix("0x").unwrap()
         );
     }
